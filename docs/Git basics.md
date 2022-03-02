@@ -1,6 +1,6 @@
 # Git basics
 
-## Git Configuration
+## Git Configuration (ESoreq)
 
 The first order of business is to configure your git on your workspace.
 I assume here that you are using the college cluster (but the same applies to your personal computer).
@@ -25,14 +25,14 @@ The first step in using tokens is to generate a token from the GitHub website. I
 ### Config code
 
 ```bash
-git config --global user.name "nialljb"
-git config --global user.email n.bourke@imperial.ac.uk
+git config --global user.name "username"
+git config --global user.email email@emailServer
 git config --global user.token xxxxxxxxxxxxxx
 git config --global core.editor nano
 ```
 
 ### Storing credentials
-https://stackoverflow.com/questions/35942754/how-can-i-save-username-and-password-in-git
+https://stackoverflow.com/questions/35942754/how-can-i-save-username-and-password-in-git  
 Attention: This method saves the credentials in plaintext on your PC's disk. Everyone on your computer can access it, e.g. malicious NPM modules.
 ```
 git config --global credential.helper store
