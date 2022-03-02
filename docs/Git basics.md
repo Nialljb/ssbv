@@ -77,3 +77,6 @@ git pull
 #### Taging and logs are helpful
 
 *Git will ignore empty folders. Make sure at least one file is present in the new folder in the Git repository, or else you are not able to add it*
+
+*Recommended reading:*
+https://rogerdudler.github.io/git-guide/
