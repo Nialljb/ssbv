@@ -1,0 +1,685 @@
+---
+title: "Peadiatric volume classification notebook"
+output: html_notebook
+---
+
+version 2 ~ 15/04/2021
+modified 
+
+Cleaning done in seperate notebook
+
+TICV correction done with SPM estimates
+ICV calculate from SPM estmates of GM, WM, CSF
+(fsl mask of CSF was too conservative and underestimated volume considerably)
+*All volume ROI estimates extracted with fsl & corrected with TICV
+
+### Clear workspace and set basic formatting
+```{r, Formating options}
+source("../../lib/setup.R")
+```
+
+# Load basic data
+```{r, include=FALSE}
+
+control.df <- read_csv('../../test/population_volume.csv') # _clean
+subj.df <- read_csv('../../test/subj_volume.csv') # _clean
+
+```
+
+
+# Clinical group comparison to population data
+## EDIT remove study data for paper figure
+```{r}
+
+
+# Select variables of interest from population dataset
+#  dplyr::select(subject, ageYears, sample, gm.ratio, wm.ratio)
+
+# Select variables of interest and rename to match population data
+clinical.df <- Imperial.df %>%
+  dplyr::select(Participant, Age, sample, gm.ratio, wm.ratio) %>%
+  dplyr::rename( ID = Participant,
+                 ageYears = Age)
+table(clinical.df$sample)
+###
+# Plots
+###
+tbi.patients <- clinical.df[ which(clinical.df$sample=='Patient'),]
+tbi.controls <- clinical.df[ which(clinical.df$sample=='Control'),]  
+
+p1 <-  ggplot(data = population.df, aes(x = ageYears , y = wm.ratio, colour = sample)) +
+        geom_point(method = "loses", alpha = 0.5 ) + 
+        geom_smooth() +
+        #geom_smooth(data = tbi.patients, method = "lm", colour = "red") +
+        #geom_point(data = tbi.patients, colour = "red", , alpha = 0.95, size = 2) +
+        #geom_smooth(data = tbi.controls, method = "lm", colour = "blue") +
+        #geom_point(data = tbi.controls, colour = "blue", , alpha = 0.95, size = 2) +
+        colPalette +
+        labs(x = "Age (years)", y = "White matter volume", caption="*corrected for ICV\npopulation n = 1,269\n Imperial controls n = 20\nTBI patients n = 39") +
+        theme_classic2() +
+        theme(text = facetText, legend.text = facetText)
+p1
+
+ggsave("~/Google Drive/Imperial/Paeds/analysis/figures/population-wm-vol.pdf", plot = p1, width = 12, height = 8, units = c("in"), dpi = 300)
+
+p2 <-  ggplot(data = population.df, aes(x = ageYears , y = gm.ratio, colour = sample)) +
+        geom_point(alpha = 0.5) + 
+        geom_smooth(method = "loess") +
+        #geom_smooth(data = tbi.patients, method = "lm", colour = "red") +
+        #geom_point(data = tbi.patients, colour = "red", alpha = 0.95, size = 2) +
+        #geom_smooth(data = tbi.controls, method = "lm", colour = "blue") +
+        #geom_point(data = tbi.controls, colour = "blue", alpha = 0.95, size = 2) +
+        colPalette +
+        labs(x = "Age (years)", y = "Grey matter volume", caption="*corrected for ICV\npopulation n = 1,232\n Imperial controls n = 20\nTBI patients n = 39") +
+        theme_classic2() +
+        theme(text = facetText, legend.text = facetText)
+p2
+ggsave("~/Google Drive/Imperial/Paeds/analysis/figures/population-gm-vol.pdf", plot = p2, width = 12, height = 8, units = c("in"), dpi = 300)
+
+
+#population.df2 <- population.df[ which(population.df$ageYears <= 20),]
+
+p3 <-  ggplot(data = population.df, aes(x = ageYears , y = ticv, colour = sex)) +
+        geom_point(alpha = 0.5, size = 4) + 
+        geom_smooth(method = "loess") +
+        colPalette +
+        xlim(7.5, 20) +
+        labs(x = "Age (years)", y = "TICV (L)", caption="") +
+        theme_classic2() +
+        theme(text = facetText, legend.text = facetText)
+p3
+ggsave("~/Google Drive/Imperial/Paeds/analysis/figures/population-ticv-vol.pdf", plot = p3, width = 12, height = 8, units = c("in"), dpi = 300)
+
+
+population.df$ageFactor <- as.factor(population.df$age)
+hist.df <-  population.df %>%
+            filter(ageFactor == 8 | ageFactor == 12 | ageFactor == 16)
+
+
+```
+
+# NEW PLOT FOR PAPER
+```{r}
+
+
+# Select variables of interest from population dataset
+#  dplyr::select(subject, ageYears, sample, gm.ratio, wm.ratio)
+
+# Select variables of interest and rename to match population data
+clinical.df <- Imperial.df %>%
+  dplyr::select(Participant, Age, sample, gm.ratio, wm.ratio) %>%
+  dplyr::rename(ageYears = Age)
+
+
+table(clinical.df$sample)
+
+tmp <- z.neuropsych %>% dplyr::select(Participant, Age_at_visit__years_months_.x)
+                
+                
+clinical.df <- merge(clinical.df, tmp, by = "Participant")
+
+
+
+###
+# Plots
+###
+tbi.patients <- clinical.df[ which(clinical.df$sample=='Patient'),]
+tbi.controls <- clinical.df[ which(clinical.df$sample=='Control'),]  
+
+p1 <-  ggplot(data = clinical.df, aes(x = Age_at_visit__years_months_.x , y = wm.ratio, color = sample)) + 
+        geom_smooth(method="lm") +
+        geom_point(alpha = 0.95, size = 2) +
+        scale_color_manual(values = npgGroupPalette) +
+        labs(x = "Age (months)", y = "White matter volume/TICV", caption="") +
+        theme_classic2() +
+        theme(text = facetText, legend.text = facetText)
+p1
+
+jitter <- position_jitter(width = 0.1) #height = 0.1
+
+p2 <-  ggplot(data = clinical.df, aes(x = Age_at_visit__years_months_.x , y = gm.ratio, color = sample)) +
+        stat_smooth(method="lm") +
+        geom_point(alpha = 0.95, size = 2) +
+        scale_color_manual(values = npgGroupPalette) + #colPalette +
+        labs(x = "Age (months)", y = "Grey matter volume/TICV", caption="") +
+        theme_classic2() +
+        theme(text = facetText, legend.text = facetText)
+    
+p2
+
+
+
+
+fPlot2 <- ggarrange(
+         p1, 
+         p2, 
+         nrow = 2, ncol = 1)
+fPlot2
+
+ggsave("~/Google Drive/Imperial/Paeds/analysis/figures/clinical-vol.pdf", plot = fPlot2, width = 8, height = 12, units = c("in"), dpi = 300)
+
+```
+
+
+# Change between 8-20
+```{r}
+
+a8 <- population.df[which(population.df$age=="8"),]
+a20 <- population.df[which(population.df$age=="20"),]
+
+mean.GM.A8 <- mean(a8$gm.ratio)
+mean.GM.A20 <- mean(a20$gm.ratio)
+
+mean.GM.A8/mean.GM.A20*100
+
+mean.WM.A8 <- mean(a8$wm.ratio)
+mean.WM.A20 <- mean(a20$wm.ratio)
+mean.WM.A20/mean.WM.A8*100
+
+```
+
+# The independent R2 values explaining volume
+```{r}
+
+#GM 
+m1 <- lm(gm.ratio ~ sample*age*sex, data = population.df) # *sex did not contribte after TICV
+m2 <- lm(gm.ratio ~ age, data = population.df)
+m3 <- lm(gm.ratio ~ sample, data = population.df)
+m4 <- lm(gm.ratio ~ sex, data = population.df)
+
+summary(m1)
+summary(m2)
+summary(m3)
+summary(m4)
+anova(m1, m3)
+# Site has larger effect than sample ~17% compared to 3%
+
+#WM 
+m1 <- lm(wm.ratio ~ sample*age*sex, data = population.df) # *sex did not contribte after TICV
+m2 <- lm(wm.ratio ~ age, data = population.df)
+m3 <- lm(wm.ratio ~ sample, data = population.df) # *sex did not contribte
+m4 <- lm(wm.ratio ~ sex, data = population.df)
+
+summary(m1)
+summary(m2)
+summary(m3)
+summary(m4)
+anova(m1, m3)
+
+```
+
+
+# Grey matter ROIs
+
+## specify the GM ROIs used in the analysis 
+tracts=c('AVI_L',	'AVI_R',	'AAIC_L',	'AAIC_R',	'MI_L',	'MI_R',	'PoI1_L',	'PoI2_R',	'TPOJ1_L',	'TPOJ1_R',	'lh_Amygdala',	'lh_Caudate',	'lh_Putamen',	'lh_Thalamus',	'lh_Hippocampus',	'rh_Amygdala',	'rh_Caudate',	'rh_Putamen',	'rh_Thalamus',	'rh_Hippocampus',	'lh_IFG_oper',	'lh_IFG_tri',	'lh_ACG',	'lh_PCG',	'lh_AParaHipp',	'lh_PParaHipp',	'lh_TOF',	'lh_SPL',	'rh_IFG_oper',	'rh_IFG_tri',	'rh_ACG',	'rh_PCG',	'rh_AParaHipp',	'rh_PParaHipp',	'rh_TOF',	'rh_SPL')
+
+### Load GM ROIs
+```{r}
+
+pop.glass <- read_csv('~/Google Drive/Imperial/Paeds/analysis/beta/pVolume/data/mahal_data/ROIs/GM/pop-glasser-mi.csv')
+imp.glass <- read_csv('~/Google Drive/Imperial/Paeds/analysis/beta/pVolume/data/mahal_data/ROIs/GM/paed-glasser-mi.csv')
+
+pop.HO <- read_csv('~/Google Drive/Imperial/Paeds/analysis/beta/pVolume/data/mahal_data/ROIs/GM/pop-HarvardOxford-meanIntensity.csv')
+imp.HO <- read_csv('~/Google Drive/Imperial/Paeds/analysis/beta/pVolume/data/mahal_data/ROIs/GM/paed-HarvardOxford-meanIntensity.csv')
+
+# Correct coding
+imp.glass$ID[imp.glass$ID=="PTBI116"] <- "PTBI042"
+# Correcting encoding inconsistancies 
+imp.glass$ID[imp.glass$ID=="PTBi004"] <- "PTBI004"
+imp.glass$ID[imp.glass$ID=="PTBi103"] <- "PTBI103"
+imp.glass$ID[imp.glass$ID=="PITB010"] <- "PTBI010"
+
+imp.HO$ID[imp.HO$ID=="PTBI116"] <- "PTBI042"
+# Correcting encoding inconsistancies 
+imp.HO$ID[imp.HO$ID=="PTBi004"] <- "PTBI004"
+imp.HO$ID[imp.HO$ID=="PTBi103"] <- "PTBI103"
+imp.HO$ID[imp.HO$ID=="PITB010"] <- "PTBI010"
+
+
+tmp.pop.GM <- merge(pop.glass, pop.HO, by = "ID")
+tmp.imp.GM <- merge(imp.glass, imp.HO, by = "ID")
+```
+
+
+SPM version
+```{r}
+
+tmp.pop.GM2 <- merge(tmp.pop.GM, population.df, by = "ID")
+
+pop.GM <- tmp.pop.GM2 %>%
+    dplyr::select(ID, age, sample.x, spm.TICV, gm.ratio, AVI_L, AVI_R, AAIC_L,	AAIC_R, MI_L,	MI_R, PoI1_L, PoI2_R, TPOJ1_L, TPOJ1_R, lh_bin_thr50_Insular_Cortex, rh_bin_thr50_Insular_Cortex, bin_thr50_Left_Amygdala, bin_thr50_Left_Caudate, bin_thr50_Left_Putamen, bin_thr50_Left_Thalamus, bin_thr50_Left_Hippocampus, bin_thr50_Right_Amygdala, bin_thr50_Right_Caudate, bin_thr50_Right_Putamen, bin_thr50_Right_Thalamus, bin_thr50_Right_Hippocampus, lh_bin_thr50_Inferior_Frontal_Gyrus_pars_opercularis, lh_bin_thr50_Inferior_Frontal_Gyrus_pars_triangularis, lh_bin_thr50_Cingulate_Gyrus_anterior_division, lh_bin_thr50_Cingulate_Gyrus_posterior_division, lh_bin_thr50_Parahippocampal_Gyrus_anterior_division, lh_bin_thr50_Parahippocampal_Gyrus_posterior_division, lh_bin_thr50_Temporal_Occipital_Fusiform_Cortex, lh_bin_thr50_Superior_Parietal_Lobule, rh_bin_thr50_Inferior_Frontal_Gyrus_pars_opercularis, rh_bin_thr50_Inferior_Frontal_Gyrus_pars_triangularis, rh_bin_thr50_Cingulate_Gyrus_anterior_division, rh_bin_thr50_Cingulate_Gyrus_posterior_division, rh_bin_thr50_Parahippocampal_Gyrus_anterior_division, rh_bin_thr50_Parahippocampal_Gyrus_posterior_division, rh_bin_thr50_Temporal_Occipital_Fusiform_Cortex, rh_bin_thr50_Superior_Parietal_Lobule, lh_bin_thr50_Occipital_Pole, rh_bin_thr50_Occipital_Pole, lh_bin_thr50_Superior_Parietal_Lobule, rh_bin_thr50_Superior_Parietal_Lobule, lh_bin_thr50_Frontal_Medial_Cortex, rh_bin_thr50_Frontal_Medial_Cortex, lh_bin_thr50_Angular_Gyrus, rh_bin_thr50_Angular_Gyrus) %>%
+    dplyr::rename(Age = age,
+                  GM = gm.ratio,
+                  lh_insula = lh_bin_thr50_Insular_Cortex,
+                  lh_Amygdala = bin_thr50_Left_Amygdala,
+                  lh_Caudate = bin_thr50_Left_Caudate,
+                  lh_Putamen = bin_thr50_Left_Putamen,
+                  lh_Thalamus = bin_thr50_Left_Thalamus,
+                  lh_Hippocampus = bin_thr50_Left_Hippocampus,
+                  rh_insula = rh_bin_thr50_Insular_Cortex,
+                  rh_Amygdala = bin_thr50_Right_Amygdala,
+                  rh_Caudate = bin_thr50_Right_Caudate,
+                  rh_Putamen = bin_thr50_Right_Putamen,
+                  rh_Thalamus = bin_thr50_Right_Thalamus,
+                  rh_Hippocampus = bin_thr50_Right_Hippocampus,
+                  lh_IFG_oper = lh_bin_thr50_Inferior_Frontal_Gyrus_pars_opercularis,
+                  lh_IFG_tri = lh_bin_thr50_Inferior_Frontal_Gyrus_pars_triangularis,
+                  lh_ACG = lh_bin_thr50_Cingulate_Gyrus_anterior_division,
+                  lh_PCG = lh_bin_thr50_Cingulate_Gyrus_posterior_division,
+                  lh_AParaHipp = lh_bin_thr50_Parahippocampal_Gyrus_anterior_division,
+                  lh_PParaHipp = lh_bin_thr50_Parahippocampal_Gyrus_posterior_division,
+                  lh_TOF = lh_bin_thr50_Temporal_Occipital_Fusiform_Cortex,
+                  lh_SPL= lh_bin_thr50_Superior_Parietal_Lobule,
+                  lh_OP = lh_bin_thr50_Occipital_Pole,
+                  lh_MPFC = lh_bin_thr50_Frontal_Medial_Cortex, 
+                  rh_IFG_oper = rh_bin_thr50_Inferior_Frontal_Gyrus_pars_opercularis,
+                  rh_IFG_tri = rh_bin_thr50_Inferior_Frontal_Gyrus_pars_triangularis,
+                  rh_ACG = rh_bin_thr50_Cingulate_Gyrus_anterior_division,
+                  rh_PCG = rh_bin_thr50_Cingulate_Gyrus_posterior_division,
+                  rh_AParaHipp = rh_bin_thr50_Parahippocampal_Gyrus_anterior_division,
+                  rh_PParaHipp = rh_bin_thr50_Parahippocampal_Gyrus_posterior_division,
+                  rh_TOF = rh_bin_thr50_Temporal_Occipital_Fusiform_Cortex,
+                  rh_SPL = rh_bin_thr50_Superior_Parietal_Lobule,
+                  lh_AG = lh_bin_thr50_Angular_Gyrus,
+                  rh_AG = rh_bin_thr50_Angular_Gyrus,
+                  rh_OP = rh_bin_thr50_Occipital_Pole,
+                  rh_MPFC = rh_bin_thr50_Frontal_Medial_Cortex,)
+
+
+
+# Correct for ICV
+pop.GM.TICV.corrected <- pop.GM
+cols <- 6:49 # IMPORTANT TO UPDATE IF NEW COLUMNS ADDED!!
+pop.GM.TICV.corrected[,cols] <- lapply(pop.GM.TICV.corrected[,cols], function(x) x/pop.GM.TICV.corrected$spm.TICV)
+
+# Remformat to long format
+pop.GM.TICV.corrected <- pop.GM.TICV.corrected %>%
+  dplyr::select(ID, Age, GM, lh_insula, rh_insula, lh_Amygdala,	lh_Caudate,	lh_Putamen,	lh_Thalamus,	lh_Hippocampus,	rh_Amygdala,	rh_Caudate,	rh_Putamen,	rh_Thalamus, rh_Hippocampus, lh_IFG_oper,	lh_ACG,	lh_PCG,	lh_AParaHipp,	lh_PParaHipp,	lh_TOF,	lh_SPL,	rh_IFG_oper,	rh_ACG,	rh_PCG,	rh_AParaHipp,	rh_PParaHipp,	rh_TOF,	rh_SPL, lh_OP, lh_MPFC, rh_OP, rh_MPFC, lh_AG, rh_AG) %>%
+  gather(key = "domain", value = "score", GM, lh_insula, rh_insula,	lh_Amygdala,	lh_Caudate,	lh_Putamen,	lh_Thalamus,	lh_Hippocampus,	rh_Amygdala,	rh_Caudate,	rh_Putamen,	rh_Thalamus,	rh_Hippocampus,	lh_IFG_oper,	lh_ACG,	lh_PCG,	lh_AParaHipp,	lh_PParaHipp,	rh_IFG_oper,	rh_ACG,	rh_PCG,	rh_AParaHipp,	rh_PParaHipp, lh_OP, lh_MPFC, rh_OP, rh_MPFC, lh_AG, rh_AG, lh_SPL, rh_SPL) %>%   # long format 
+  mutate(domain = factor(domain))  
+
+pop.GM.TICV.corrected$domain <- factor(pop.GM.TICV.corrected$domain,levels = c("lh_IFG_oper",	"rh_IFG_oper", "lh_MPFC", "rh_MPFC",	"lh_ACG", "rh_ACG",	"lh_PCG", "rh_PCG", "lh_AG", "rh_AG", "lh_SPL", "rh_SPL", "lh_OP", "rh_OP",	"lh_AParaHipp", "rh_AParaHipp",	"lh_PParaHipp",	"rh_PParaHipp",  "lh_insula","rh_insula", "lh_Amygdala", "rh_Amygdala", "lh_Caudate", "rh_Caudate",	"lh_Putamen", "rh_Putamen",	"lh_Thalamus", "rh_Thalamus", "GM"))
+
+
+pop.GM.TICV.corrected <- na.omit(pop.GM.TICV.corrected)
+
+## Imperial grey matter
+tmp.df <- Imperial.df %>%
+    dplyr::rename( ID = Participant)
+        
+tmp.imp.GM2 <- merge(tmp.imp.GM, tmp.df, by = "ID") #Imperial.df
+
+
+imp.GM <- tmp.imp.GM2 %>%
+    dplyr::select(ID, Age, sample, gm.ratio, spm.TICV, lh_bin_thr50_Insular_Cortex, rh_bin_thr50_Insular_Cortex, AVI_L, AVI_R, AAIC_L,	AAIC_R, MI_L,	MI_R, PoI1_L, PoI2_R, TPOJ1_L, TPOJ1_R, bin_thr50_Left_Amygdala, bin_thr50_Left_Caudate, bin_thr50_Left_Putamen, bin_thr50_Left_Thalamus, bin_thr50_Left_Hippocampus, bin_thr50_Right_Amygdala, bin_thr50_Right_Caudate, bin_thr50_Right_Putamen, bin_thr50_Right_Thalamus, bin_thr50_Right_Hippocampus, lh_bin_thr50_Inferior_Frontal_Gyrus_pars_opercularis, lh_bin_thr50_Inferior_Frontal_Gyrus_pars_triangularis, lh_bin_thr50_Cingulate_Gyrus_anterior_division, lh_bin_thr50_Cingulate_Gyrus_posterior_division, lh_bin_thr50_Parahippocampal_Gyrus_anterior_division, lh_bin_thr50_Parahippocampal_Gyrus_posterior_division, lh_bin_thr50_Temporal_Occipital_Fusiform_Cortex, lh_bin_thr50_Superior_Parietal_Lobule, rh_bin_thr50_Inferior_Frontal_Gyrus_pars_opercularis, rh_bin_thr50_Inferior_Frontal_Gyrus_pars_triangularis, rh_bin_thr50_Cingulate_Gyrus_anterior_division, rh_bin_thr50_Cingulate_Gyrus_posterior_division, rh_bin_thr50_Parahippocampal_Gyrus_anterior_division, rh_bin_thr50_Parahippocampal_Gyrus_posterior_division, rh_bin_thr50_Temporal_Occipital_Fusiform_Cortex, rh_bin_thr50_Superior_Parietal_Lobule, lh_bin_thr50_Occipital_Pole, rh_bin_thr50_Occipital_Pole, lh_bin_thr50_Superior_Parietal_Lobule, rh_bin_thr50_Superior_Parietal_Lobule, lh_bin_thr50_Frontal_Medial_Cortex, lh_bin_thr50_Frontal_Medial_Cortex, rh_bin_thr50_Frontal_Medial_Cortex, rh_bin_thr50_Angular_Gyrus, lh_bin_thr50_Angular_Gyrus) %>%
+    dplyr::rename(#Age = ageYears,
+                  GM = gm.ratio,
+                  #sample = Group,
+                  lh_insula = lh_bin_thr50_Insular_Cortex,
+                  lh_Amygdala = bin_thr50_Left_Amygdala,
+                  lh_Caudate = bin_thr50_Left_Caudate,
+                  lh_Putamen = bin_thr50_Left_Putamen,
+                  lh_Thalamus = bin_thr50_Left_Thalamus,
+                  lh_Hippocampus = bin_thr50_Left_Hippocampus,
+                  rh_insula = rh_bin_thr50_Insular_Cortex,
+                  rh_Amygdala = bin_thr50_Right_Amygdala,
+                  rh_Caudate = bin_thr50_Right_Caudate,
+                  rh_Putamen = bin_thr50_Right_Putamen,
+                  rh_Thalamus = bin_thr50_Right_Thalamus,
+                  rh_Hippocampus = bin_thr50_Right_Hippocampus,
+                  lh_IFG_oper = lh_bin_thr50_Inferior_Frontal_Gyrus_pars_opercularis,
+                  lh_IFG_tri = lh_bin_thr50_Inferior_Frontal_Gyrus_pars_triangularis,
+                  lh_ACG = lh_bin_thr50_Cingulate_Gyrus_anterior_division,
+                  lh_PCG = lh_bin_thr50_Cingulate_Gyrus_posterior_division,
+                  lh_AParaHipp = lh_bin_thr50_Parahippocampal_Gyrus_anterior_division,
+                  lh_PParaHipp = lh_bin_thr50_Parahippocampal_Gyrus_posterior_division,
+                  lh_TOF = lh_bin_thr50_Temporal_Occipital_Fusiform_Cortex,
+                  lh_SPL= lh_bin_thr50_Superior_Parietal_Lobule,
+                  lh_OP = lh_bin_thr50_Occipital_Pole,
+                  lh_MPFC = lh_bin_thr50_Frontal_Medial_Cortex,
+                  rh_IFG_oper = rh_bin_thr50_Inferior_Frontal_Gyrus_pars_opercularis,
+                  rh_IFG_tri = rh_bin_thr50_Inferior_Frontal_Gyrus_pars_triangularis,
+                  rh_ACG = rh_bin_thr50_Cingulate_Gyrus_anterior_division,
+                  rh_PCG = rh_bin_thr50_Cingulate_Gyrus_posterior_division,
+                  rh_AParaHipp = rh_bin_thr50_Parahippocampal_Gyrus_anterior_division,
+                  rh_PParaHipp = rh_bin_thr50_Parahippocampal_Gyrus_posterior_division,
+                  rh_TOF = rh_bin_thr50_Temporal_Occipital_Fusiform_Cortex,
+                  rh_SPL= rh_bin_thr50_Superior_Parietal_Lobule,
+                  rh_OP = rh_bin_thr50_Occipital_Pole,
+                  rh_MPFC = rh_bin_thr50_Frontal_Medial_Cortex,
+                  lh_AG = lh_bin_thr50_Angular_Gyrus,
+                  rh_AG = rh_bin_thr50_Angular_Gyrus) #%>%
+
+imp.GM <- na.omit(imp.GM) # 016 missing TICV
+
+imp.GM.TICV.corrected <- imp.GM
+cols <- 6:49 # IMPORTANT TO UPDATE IF NEW COLUMNS ADDED!!
+imp.GM.TICV.corrected[,cols] <- lapply(imp.GM.TICV.corrected[,cols], function(x) x/imp.GM.TICV.corrected$spm.TICV)
+
+# Reformat to long format
+imp.GM.TICV.corrected <- imp.GM.TICV.corrected %>%
+  dplyr::select(ID, Age, GM, lh_insula, rh_insula, 	lh_Amygdala,	lh_Caudate,	lh_Putamen,	lh_Thalamus,	lh_Hippocampus,	rh_Amygdala,	rh_Caudate,	rh_Putamen,	rh_Thalamus, rh_Hippocampus, lh_IFG_oper,		lh_ACG,	lh_PCG,	lh_AParaHipp,	lh_PParaHipp,	lh_TOF,	lh_SPL,	rh_IFG_oper,	rh_ACG,	rh_PCG,	rh_AParaHipp,	rh_PParaHipp,	rh_TOF,	rh_SPL, lh_OP, lh_MPFC, rh_OP, rh_MPFC, lh_AG, rh_AG) %>%
+  gather(key = "domain", value = "score", GM, lh_insula, rh_insula,	lh_Amygdala,	lh_Caudate,	lh_Putamen,	lh_Thalamus,	lh_Hippocampus,	rh_Amygdala,	rh_Caudate,	rh_Putamen,	rh_Thalamus, rh_Hippocampus, lh_IFG_oper,		lh_ACG,	lh_PCG,	lh_AParaHipp,	lh_PParaHipp,	rh_IFG_oper,	rh_ACG,	rh_PCG,	rh_AParaHipp,	rh_PParaHipp, lh_OP, lh_MPFC, rh_OP, rh_MPFC, lh_AG, rh_AG, lh_SPL, rh_SPL) %>%   # long format 
+  mutate(domain = factor(domain))  
+
+imp.GM.TICV.corrected$domain <- factor(imp.GM.TICV.corrected$domain,levels = c("lh_IFG_oper",	"rh_IFG_oper", "lh_MPFC", "rh_MPFC",	"lh_ACG", "rh_ACG",	"lh_PCG", "rh_PCG",	"lh_AG", "rh_AG", "lh_SPL", "rh_SPL", "lh_OP", "rh_OP", "lh_AParaHipp", "rh_AParaHipp",	"lh_PParaHipp",	"rh_PParaHipp",  "lh_insula","rh_insula", "lh_Amygdala", "rh_Amygdala", "lh_Caudate", "rh_Caudate",	"lh_Putamen", "rh_Putamen",	"lh_Thalamus", "rh_Thalamus", "GM"))
+
+
+imp.GM.TICV.corrected <- na.omit(imp.GM.TICV.corrected) # redundent, must do before mutate
+
+```
+
+
+# Abnormal grey matter volume classification
+- This analysis will take population age norms with GM
+```{r}
+
+#############################
+# EDIT HERE:
+# cortical, subcortical, wm, net
+
+pop.df <- pop.GM.TICV.corrected #pop.GM # pop.wm
+test.df <- imp.GM.TICV.corrected # imp.GM # imp.wm
+tissue <- "spm_gm"
+
+#############################
+result <- paste("~/QCvol_", tissue, "_classification/", sep="")
+dir.create(result)
+
+pop.df$Age <- as.factor(as.character(pop.df$Age))
+test.df$Age <- as.factor(as.character(test.df$Age))
+test.df$domain <- droplevels(test.df$domain)
+
+# loop 1: Subset based on age
+for(ii in levels(test.df$Age)) {
+  print("Processing age: ") 
+  print(ii)
+  df.loop <- pop.df[ which(pop.df$Age==ii),]
+  tbi.age.df <- test.df[ which(test.df$Age==ii),]
+  ni <- length(df.loop$Age)/length(levels(df.loop$domain))
+  print("n = ") 
+  print(ni)
+  #### Calculate Control Mean and SD ####
+  #Calculate Mean and SD accross ROIs for control group
+  ConMean<-function(arg1){
+    x<-mean(df.loop$score[df.loop$domain==arg1])
+    return(x)
+  }
+
+  list<-unique(df.loop$domain)
+  unlist(lapply(list,ConMean))
+  conMean<-unlist(lapply(list,ConMean))
+
+  ConSD<-function(arg1){
+    x<-sd(df.loop$score[df.loop$domain==arg1])
+    return(x)
+  }
+
+  list<-unique(df.loop$domain)
+  unlist(lapply(list,ConSD))
+  conSD<-unlist(lapply(list,ConSD))
+  
+  
+  #### Patient selection and QC ####
+   # rm(Patient)
+  tbi.age.df$Participant <- as.factor(tbi.age.df$ID)
+  nSub <- levels(tbi.age.df$Participant)
+  for(sub in nSub) {
+
+    case.df <- tbi.age.df[ which(tbi.age.df$Participant==sub), ]
+    print(sub)
+    case.tbi <- case.df
+    #### Z-scores and plotting ####
+    'Calculate Z-score'
+    IndividualVal<-case.tbi[,6] # 8
+    Z<-(IndividualVal-conMean)/conSD
+    case.tbi<-cbind(case.tbi,Z)
+
+    'Calculate P-value from Z-statistic'
+    case.tbi$Pval<-2*pnorm(-abs(case.tbi$Z))
+
+    'Layout P values to 6 decimal places'
+    case.tbi$Pval<-round(case.tbi$Pval,6)
+
+    'FDR correct Pvalues'
+    case.tbi$Padj<-p.adjust(case.tbi$Pval, method="fdr")
+
+  CairoPDF(file=paste("~/QCvol_", tissue, "_classification/", print(sub), "_vol.pdf", sep=""), width=10, height=6, pointsize=10)
+  
+  # CairoPNG(filename=paste("~/QCvol_", tissue, "_classification/", print(sub), "_vol.png", sep=""), units="in", width=10, height=6, pointsize=10, res=300)
+
+   p <- ggplot(df.loop, aes(x=df.loop$domain, y=df.loop$score)) +
+     geom_boxplot(data=df.loop,outlier.shape=NA) +
+     theme(axis.text.x=element_text(angle=45,hjust=1)) +
+     labs(x="ROI",y="Volume", caption="") +
+     geom_point(data=case.tbi, size = 2, alpha=0.8,
+               aes(x=case.tbi$domain, y=case.tbi$score, color=case.tbi$Padj<0.05)) +
+     scale_colour_manual(name="Sig.",values=setNames(c('red','black'),c(T,F))) +
+     geom_vline(xintercept=28.5,linetype="dashed") +
+     ggtitle(paste0(case.tbi$Participant, "\n\n","Age: ", ii, "\nVolume population age norm n = ", ni))
+
+   plot(p); dev.off(); p
+   p
+   print("Saving plot: ")
+   print(sub)
+  }
+}
+
+```
+
+
+# White matter 
+~/Google Drive/Imperial/Paeds/analysis/beta/pVolume/data/mahal_data/ROIs/WM/
+
+## Medicolegal tracts (Jolly et al., 2020)
+MNI_Bodyofcorpuscallosum	MNI_CoronaRadiataL	MNI_CoronaRadiataR	MNI_Corticospinal_L	MNI_Corticospinal_R	MNI_Genuofcorpuscallosum	MNI_Inf_longitudinal_fasc_L	MNI_Inf_longitudinal_fasc_R	MNI_mean_FA_skeleton_mask	MNI_MiddleCerebellarPeduncle	MNI_Spleniumofcorpuscallosum
+
+## SDS-VB
+AnteriorLeftCaudate_ACC_1mm	
+AnteriorRightCaudate_ACC_1mm
+MNI_VBtract_256bin_R	
+MNI_VBtract_256bin
+
+### Load WM ROIs
+```{r}
+
+pop.ml <- read_csv('~/Google Drive/Imperial/Paeds/analysis/beta/pVolume/data/mahal_data/ROIs/WM/pop-ml-skel.csv')
+imp.ml <- read_csv('~/Google Drive/Imperial/Paeds/analysis/beta/pVolume/data/mahal_data/ROIs/WM/paed-ml-skel.csv')
+
+pop.vb <- read_csv('~/Google Drive/Imperial/Paeds/analysis/beta/pVolume/data/mahal_data/ROIs/WM/pop-vbsds-skel.csv')
+imp.vb <- read_csv('~/Google Drive/Imperial/Paeds/analysis/beta/pVolume/data/mahal_data/ROIs/WM/paed-vbsds-skel.csv')
+
+# Correct coding
+imp.ml$ID[imp.ml$ID=="PTBI116"] <- "PTBI042"
+# Correcting encoding inconsistancies 
+imp.ml$ID[imp.ml$ID=="PTBi004"] <- "PTBI004"
+imp.ml$ID[imp.ml$ID=="PTBi103"] <- "PTBI103"
+imp.ml$ID[imp.ml$ID=="PITB010"] <- "PTBI010"
+
+imp.vb$ID[imp.vb$ID=="PTBI116"] <- "PTBI042"
+# Correcting encoding inconsistancies 
+imp.vb$ID[imp.vb$ID=="PTBi004"] <- "PTBI004"
+imp.vb$ID[imp.vb$ID=="PTBi103"] <- "PTBI103"
+imp.vb$ID[imp.vb$ID=="PITB010"] <- "PTBI010"
+
+
+tmp.pop.WM <- merge(pop.ml, pop.vb, by = "ID")
+tmp.imp.WM <- merge(imp.ml, imp.vb, by = "ID")
+```
+MNI_Bodyofcorpuscallosum,	MNI_CoronaRadiataL,	MNI_CoronaRadiataR,	MNI_Corticospinal_L, MNI_Corticospinal_R,	MNI_Genuofcorpuscallosum,	MNI_Inf_longitudinal_fasc_L, MNI_Inf_longitudinal_fasc_R,	MNI_mean_FA_skeleton_mask,	MNI_MiddleCerebellarPeduncle, MNI_Spleniumofcorpuscallosum, AnteriorLeftCaudate_ACC_1mm, AnteriorRightCaudate_ACC_1mm, MNI_VBtract_256bin_R, MNI_VBtract_256bin
+
+```{r}
+
+tmp.pop.WM2 <- merge(tmp.pop.WM, population.df, by = "ID")
+
+pop.wm <- tmp.pop.WM2 %>%
+  dplyr::select(ID, age, sample.x, spm.TICV, skel_MNI_Bodyofcorpuscallosum,	skel_MNI_CoronaRadiataL,	skel_MNI_CoronaRadiataR,	skel_MNI_Corticospinal_L, skel_MNI_Corticospinal_R,	skel_MNI_Genuofcorpuscallosum,	skel_MNI_Inf_longitudinal_fasc_L, skel_MNI_Inf_longitudinal_fasc_R,	skel_MNI_mean_FA_skeleton_mask,	skel_MNI_MiddleCerebellarPeduncle, skel_MNI_Spleniumofcorpuscallosum, AnteriorLeftCaudate_ACC_1mm, AnteriorRightCaudate_ACC_1mm, MNI_VBtract_256bin_R, MNI_VBtract_256bin) %>%
+  dplyr::rename(sample = sample.x,
+                Age = age,
+                BCC = skel_MNI_Bodyofcorpuscallosum,	
+                CR_L = skel_MNI_CoronaRadiataL,	
+                CR_R = skel_MNI_CoronaRadiataR,	
+                CST_L = skel_MNI_Corticospinal_L, 
+                CST_R = skel_MNI_Corticospinal_R,	
+                GCC = skel_MNI_Genuofcorpuscallosum,	
+                ILF_L = skel_MNI_Inf_longitudinal_fasc_L,
+                ILF_R = skel_MNI_Inf_longitudinal_fasc_R,
+                WM_VOL = skel_MNI_mean_FA_skeleton_mask,
+                MCP = skel_MNI_MiddleCerebellarPeduncle,
+                SCC = skel_MNI_Spleniumofcorpuscallosum,
+                AC_ACC_L = AnteriorLeftCaudate_ACC_1mm, 
+                AC_ACC_R = AnteriorRightCaudate_ACC_1mm,
+                VB_R = MNI_VBtract_256bin_R, 
+                VB_L = MNI_VBtract_256bin) #%>%
+
+# Correct for ICV
+pop.wm.TICV.corrected <- pop.wm
+cols <- 5:19 # IMPORTANT TO UPDATE IF NEW COLUMNS ADDED!!
+pop.wm.TICV.corrected[,cols] <- lapply(pop.wm.TICV.corrected[,cols], function(x) x/pop.wm.TICV.corrected$spm.TICV)
+
+
+pop.wm.TICV.corrected <- pop.wm.TICV.corrected %>%
+    gather(key = "domain", value = "score", BCC, CR_L, CR_R, CST_L, CST_R, GCC, ILF_L, ILF_R, WM_VOL, MCP, SCC, AC_ACC_L, AC_ACC_R, VB_R, VB_L) %>%   # long format 
+    mutate(domain = factor(domain))  
+
+pop.wm.TICV.corrected$domain <- factor(pop.wm.TICV.corrected$domain,levels = c("BCC", "GCC", "SCC", "CST_L", "CST_R", "CR_L", "CR_R", "ILF_L", "ILF_R", "MCP", "AC_ACC_L", "AC_ACC_R", "VB_R", "VB_L", "WM_VOL"))
+
+
+
+# Imperial wm
+
+ tmp.imp.WM2 <- merge(tmp.imp.WM, tmp.df, by = "ID")
+
+
+imp.wm <- tmp.imp.WM2 %>%
+  dplyr::select(ID, Age, sample, spm.TICV, MNI_Bodyofcorpuscallosum,	MNI_CoronaRadiataL,	MNI_CoronaRadiataR,	MNI_Corticospinal_L, MNI_Corticospinal_R,	MNI_Genuofcorpuscallosum,	MNI_Inf_longitudinal_fasc_L, MNI_Inf_longitudinal_fasc_R,	MNI_mean_FA_skeleton_mask,	MNI_MiddleCerebellarPeduncle, MNI_Spleniumofcorpuscallosum, AnteriorLeftCaudate_ACC_1mm, AnteriorRightCaudate_ACC_1mm, MNI_VBtract_256bin_R, MNI_VBtract_256bin) %>%
+  dplyr::rename(#sample = Group,
+                #Age = age,
+                BCC = MNI_Bodyofcorpuscallosum,	
+                CR_L = MNI_CoronaRadiataL,	
+                CR_R = MNI_CoronaRadiataR,	
+                CST_L = MNI_Corticospinal_L, 
+                CST_R = MNI_Corticospinal_R,	
+                GCC = MNI_Genuofcorpuscallosum,	
+                ILF_L = MNI_Inf_longitudinal_fasc_L,
+                ILF_R = MNI_Inf_longitudinal_fasc_R,
+                WM_VOL = MNI_mean_FA_skeleton_mask,
+                MCP = MNI_MiddleCerebellarPeduncle,
+                SCC = MNI_Spleniumofcorpuscallosum,
+                AC_ACC_L = AnteriorLeftCaudate_ACC_1mm, 
+                AC_ACC_R = AnteriorRightCaudate_ACC_1mm,
+                VB_R = MNI_VBtract_256bin_R, 
+                VB_L = MNI_VBtract_256bin) #%>%
+
+imp.wm <- na.omit(imp.wm)
+
+# Correct for ICV
+imp.wm.TICV.corrected <- imp.wm
+cols <- 5:19 # IMPORTANT TO UPDATE IF NEW COLUMNS ADDED!!
+imp.wm.TICV.corrected[,cols] <- lapply(imp.wm.TICV.corrected[,cols], function(x) x/imp.wm.TICV.corrected$spm.TICV)
+
+imp.wm.TICV.corrected <- imp.wm.TICV.corrected %>%
+    gather(key = "domain", value = "score", BCC, CR_L, CR_R, CST_L, CST_R, GCC, ILF_L, ILF_R, WM_VOL, MCP, SCC, AC_ACC_L, AC_ACC_R, VB_R, VB_L) %>%   # long format 
+    mutate(domain = factor(domain)) 
+
+imp.wm.TICV.corrected$domain <- factor(imp.wm.TICV.corrected$domain,levels = c("BCC", "GCC", "SCC", "CST_L", "CST_R", "CR_L", "CR_R", "ILF_L", "ILF_R", "MCP", "AC_ACC_L", "AC_ACC_R", "VB_R", "VB_L", "WM_VOL"))
+
+```
+
+ 
+# Abnormal white matter volume classification
+- analysis in indiv-tractStats looks at WM ICBM tracts with age residuls of the group
+- This analysis will take population age norms with GM
+```{r}
+
+#############################
+# EDIT HERE:
+# cortical, subcortical, wm, net
+
+pop.df <- pop.wm.TICV.corrected # pop.wm
+test.df <- imp.wm.TICV.corrected # imp.wm
+tissue <- "wm"
+
+#############################
+result <- paste("~/QCvol_", tissue, "_classification/", sep="")
+dir.create(result)
+
+pop.df$Age <- as.factor(as.character(pop.df$Age))
+test.df$Age <- as.factor(as.character(test.df$Age))
+test.df$domain <- droplevels(test.df$domain)
+# loop 1: Subset based on age
+for(ii in levels(test.df$Age)) {
+  print("Processing age: ") 
+  print(ii)
+  df.loop <- pop.df[ which(pop.df$Age==ii),]
+  tbi.age.df <- test.df[ which(test.df$Age==ii),]
+  ni <- length(df.loop$Age)/length(levels(df.loop$domain))
+  print("n = ") 
+  print(ni)
+  #### Calculate Control Mean and SD ####
+  #Calculate Mean and SD accross ROIs for control group
+  ConMean<-function(arg1){
+    x<-mean(df.loop$score[df.loop$domain==arg1])
+    return(x)
+  }
+
+  list<-unique(df.loop$domain)
+  unlist(lapply(list,ConMean))
+  conMean<-unlist(lapply(list,ConMean))
+
+  ConSD<-function(arg1){
+    x<-sd(df.loop$score[df.loop$domain==arg1])
+    return(x)
+  }
+
+  list<-unique(df.loop$domain)
+  unlist(lapply(list,ConSD))
+  conSD<-unlist(lapply(list,ConSD))
+  
+  
+  #### Patient selection and QC ####
+   # rm(Patient)
+  tbi.age.df$Participant <- as.factor(tbi.age.df$ID)
+  nSub <- levels(tbi.age.df$Participant)
+  for(sub in nSub) {
+
+    case.df <- tbi.age.df[ which(tbi.age.df$Participant==sub), ]
+    print(sub)
+    case.tbi <- case.df
+    #### Z-scores and plotting ####
+    'Calculate Z-score'
+    IndividualVal<-case.tbi[,6] #
+    Z<-(IndividualVal-conMean)/conSD
+    case.tbi<-cbind(case.tbi,Z)
+
+    'Calculate P-value from Z-statistic'
+    case.tbi$Pval<-2*pnorm(-abs(case.tbi$Z))
+
+    'Layout P values to 6 decimal places'
+    case.tbi$Pval<-round(case.tbi$Pval,6)
+
+    'FDR correct Pvalues'
+    case.tbi$Padj<-p.adjust(case.tbi$Pval, method="fdr")
+
+  CairoPDF(file=paste("~/QCvol_", tissue, "_classification/", print(sub), "_vol.pdf", sep=""), width=10, height=6, pointsize=10)
+  # CairoPNG(filename=paste("~/QCvol_", tissue, "_classification/", print(sub), "_vol.png", sep=""), units="in", width=10, height=6, pointsize=10, res=300)
+
+   p <- ggplot(df.loop, aes(x=df.loop$domain, y=df.loop$score)) +
+     geom_boxplot(data=df.loop,outlier.shape=NA) +
+     theme(axis.text.x=element_text(angle=45,hjust=1)) +
+     labs(x="ROI",y="Volume", caption="") +
+     geom_point(data=case.tbi, size = 2, alpha=0.8,
+               aes(x=case.tbi$domain, y=case.tbi$score, color=case.tbi$Padj<0.05)) +
+     scale_colour_manual(name="Sig.",values=setNames(c('red','black'),c(T,F))) +
+     geom_vline(xintercept=14.5,linetype="dashed") +
+     ggtitle(paste0(case.tbi$Participant, "\n\n","Age: ", ii, "\nVolume population age norm n = ", ni))
+
+   plot(p); dev.off(); p
+   p
+   print("Saving plot: ")
+   print(sub)
+  }
+}
+
+```

@@ -1,0 +1,122 @@
+#!/bin/sh
+
+Usage() {
+cat <<EOF
+ 
+HPC - Imperial College London
+
+localSubmit 1.0 (March 2022)
+n.bourke@imperial.ac.uk
+
+Usage: localSubmit <commands.txt> <walltime> <ncpus> <memory>
+e.g. localSubmit commands.txt 01:00:00 1 8Gb
+
+Executes each line of a text file as separate tasks in a PBSPRO array job.
+This job submission textfile can be created by echoing a command to a file.
+e.g.
+echo " someCommand -optional_flag -input -output " >> job.txt
+
+DEPENDENCY:
+Must be able to pass passcode. Keys are disabled on RCS so passphrase needs to be set as ${SSH_ASKPASS}
+https://shanelonergan.github.io/streamline-your-workflow-with-custom-bash-commands/
+
++-------------------------------------+
+| Rough guide to resource allocation: |
+|                                     |
+| Light Job    01:00:00 1 3Gb         |
+| Medium Job   12:00:00 1 8Gb         |
+| Heavy Job    24:00:00 1 8Gb         |
+| V.heavy Job  48:00:00 1 8Gb         |
++-------------------------------------+
+
+Other tips:
+- Max walltime is 72:00:00.
+- Greater resources (memory, number of CPUs) will delay the start of your jobs
+- Most neuroimaging software will not go above 8Gb of memory. If thinking of going above this, check that it is actually required.
+- Can your process use more than 1 CPU? If it can and and it automatically spawns but you dont ask for >1, your job will be killed. If it doesnt, dont increase this number as it will also slow job allocation.
+- BEST PRACTICE: Run job on a single subject and view the output log for what the average CPU and Mem usage was. With this check the job sizing guide for the Imperial HPC
+
+EOF
+exit 1
+}
+
+if [  $# -lt 4 ];
+  then
+  Usage
+  exit 1
+fi
+
+if [ $# -eq 4 ];
+  then
+  input=$1
+  walltime=$2
+  ncpus=$3
+  mem=$4
+
+  echo "input is = $input"
+  line=$(head -n 1 $input)
+  echo "Walltime = $walltime"
+  echo "Number of CPUs = $ncpus"
+  echo "Memory = $mem"
+
+  echo "login is : ${cluster}"
+  newJobFile=`basename ${input} | cut -d '.' -f 1`
+  ip=`basename $input`
+fi
+
+dateFunction(){
+	date
+}
+
+  # Get number of jobs from command file
+  NUMJOBS=`wc -l < $input`;
+  echo "jobs = ${NUMJOBS}"
+  # Add in condition to capture a single job submission
+  if [  "$NUMJOBS" -eq 1 ];
+    then
+      pbsfile=`mktemp`
+      echo "#!/bin/sh" > $pbsfile;
+      echo "#PBS -l walltime=$walltime" >> $pbsfile;
+      echo "#PBS -l select=1:ncpus=$ncpus:mem=$mem" >> $pbsfile;
+      echo "#PBS -j oe" >> $pbsfile;
+      echo $line >> $pbsfile;
+
+      echo "WARNING: only one job submitted!"
+      echo "Check this correct"
+      echo "PBS file = "
+      echo ${pbsfile}
+	    echo "Job submitted: $(dateFunction)"
+      
+      cat ${pbsfile} | ${cluster} ' cat > ~/tmp/JobFile.$$.tmp && chmod +x ~/tmp/JobFile.$$.tmp && /opt/pbs/bin/qsub -k oe ~/tmp/JobFile.$$.tmp'
+
+    else
+
+      # Make place for output logs
+      path="$(dirname ${input})" # remove filename
+      ex=$(echo ${input} | rev | cut -d/ -f1 | rev); dir=$(cut -d. -f1 <<<$ex) # reverse $input and remove the last field and reverse again
+
+        nj=$(echo ${NUMJOBS})
+        # Setup pbs submission file and execute it
+        pbsfile=`mktemp`;
+        outfile=${pbsfile##*/}
+        echo "#!/bin/sh" > $pbsfile;
+        echo "#PBS -N ${dir}" >> $pbsfile;
+        echo "#PBS -l walltime=${walltime}" >> $pbsfile;
+        echo "#PBS -l select=1:ncpus=${ncpus}:mem=${mem}" >> $pbsfile;
+        echo "#PBS -j oe" >> $pbsfile;
+        echo "#PBS -J 1-${nj}" >> $pbsfile;
+        echo "cmd=\`sed \"\${PBS_ARRAY_INDEX}q;d\" ${chome}/repos/ssbv/tmp/${ip}\`" >> $pbsfile;
+        echo "PATH=${PATH}:`pwd`" >> $pbsfile;
+        echo "eval \${cmd}" >> $pbsfile;
+
+        echo "Array jobs submitted: $NUMJOBS"
+#        echo "PBS file = "
+#        echo ${pbsfile}
+	      echo "Job submission time: $(dateFunction)"
+        
+        #cat ${pbsfile} | ssh nbourke@login.hpc.ic.ac.uk ' cat > ~/tmp/foo.sh && chmod +x ~/tmp/foo.sh && /opt/pbs/bin/qsub -k oe ~/tmp/foo.sh'
+        cat ${pbsfile} | ${cluster} ' cat > ~/tmp/JobFile.$$.tmp && chmod +x ~/tmp/JobFile.$$.tmp && /opt/pbs/bin/qsub -k oe ~/tmp/JobFile.$$.tmp'
+
+  fi
+
+

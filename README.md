@@ -5,6 +5,7 @@
 3. Relative paths when data is remote
 4. Work with out of the box functionanality in mind
 
+To do list:
 - [] Pull og workflow from paeds  
    - [] Pulling data  
    - [] Organising data  
