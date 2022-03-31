@@ -1,0 +1,16 @@
+
+$(: Project label) 
+project="pcnorad"
+
+$(: dependencies)
+export repo=pwd
+export dep=${repo}/lib
+export workingDir=~/hpc/eph/${project}
+
+wd=/rds/general/user/nbourke/ephemeral/${project}
+# imData is a symbolic link to shared directory
+imData=~/hpc/imData
+raw=${imData}/raw
+
+# source login details
+source ~/.activate_imperial_rcs_login
